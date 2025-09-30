@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import html2canvas from "html2canvas";
 import { motion } from "framer-motion";
+import jsPDF from "jspdf";
 
 // --- Scale descriptors (school-adapted, OECD-derived) ---
 const SCALE: Record<string, Record<number, string>> = {
@@ -71,17 +72,14 @@ const FULL_DEFS: Record<string, string> = {
 
 // Quadrant labels & descriptions per pair
 const QUADRANTS: Record<string, { name: string; desc: string }> = {
-  // Relevance vs Alignment
   RAID_HH: { name: "Sweet Spot", desc: "Strategic choice: valuable locally and backed by curriculum/system." },
   RAID_HL: { name: "Hidden Gems", desc: "Strong local fit but not fully aligned; adapt/map or advocate." },
   RAID_LH: { name: "Box-Tickers", desc: "Easy to justify on paper; limited classroom value." },
   RAID_LL: { name: "Misfits", desc: "Neither useful nor aligned; consider phase-out." },
-  // Effectiveness vs Impact
   EFIM_HH: { name: "Game-Changers", desc: "Deliver outcomes and reshape culture/outcomes more broadly." },
   EFIM_HL: { name: "Efficient Tools", desc: "Hit targets well but limited wider change; niche yet valuable." },
   EFIM_LH: { name: "Catalysts", desc: "Inconsistent outcomes but spark important long-term shifts." },
   EFIM_LL: { name: "Ineffectual", desc: "Neither achieves goals nor creates wider value." },
-  // Sustainability vs Coherence
   SUCO_HH: { name: "Strategic Anchors", desc: "Long-lasting and well-integrated; backbone of strategy." },
   SUCO_HL: { name: "Stubborn Survivors", desc: "Enduring but isolated; risk inefficiency/silos." },
   SUCO_LH: { name: "Short-Lived Allies", desc: "Well-fitting but fragile; benefits may fade." },
@@ -100,7 +98,7 @@ type PairKey = typeof PAIRS[number]["key"];
 function useQuadrant(pair: PairKey, xVal: number, yVal: number) {
   const xHigh = xVal >= 3;
   const yHigh = yVal >= 3;
-  const code = `${pair}_${yHigh ? "H" : "L"}${xHigh ? "H" : "L"}` as keyof typeof QUADRANTS; // order: Y then X
+  const code = `${pair}_${yHigh ? "H" : "L"}${xHigh ? "H" : "L"}` as keyof typeof QUADRANTS;
   return QUADRANTS[code];
 }
 
@@ -128,7 +126,7 @@ const SliderRow: React.FC<{
         aria-label={`${label} slider`}
         className="w-full accent-black"
       />
-      <div className="text-sm text-muted-foreground" aria-live="polite">{descriptor}</div>
+      <div className="text-sm text-muted-foreground">{descriptor}</div>
       {showFull && <div className="text-xs text-slate-600 bg-slate-50 border rounded-xl p-3">{full}</div>}
     </div>
   );
@@ -150,20 +148,10 @@ const Grid: React.FC<{ xLabel: string; yLabel: string; x: number; y: number; com
       <rect x={padding+plotW/2} y={padding+plotH/2} width={plotW/2} height={plotH/2} fill="#e2e8f0" />
       <line x1={padding} y1={padding} x2={padding} y2={size-padding} stroke="#94a3b8" />
       <line x1={padding} y1={size-padding} x2={size-padding} y2={size-padding} stroke="#94a3b8" />
-      {[1,2,3,4,5].map((v) => {
-        const tx = padding + ((v-1)/4)*plotW;
-        const ty = padding + (1- (v-1)/4)*plotH;
-        return (
-          <g key={v}>
-            <line x1={tx} y1={size-padding} x2={tx} y2={size-padding+6} stroke="#94a3b8" />
-            <line x1={padding-6} y1={ty} x2={padding} y2={ty} stroke="#94a3b8" />
-          </g>
-        );
-      })}
-      <text x={size/2} y={size-4} textAnchor="middle" className="fill-slate-600 text-xs">{xLabel} → Low to High</text>
-      <text x={12} y={size/2} transform={`rotate(-90 12 ${size/2})`} textAnchor="middle" className="fill-slate-600 text-xs">{yLabel} → Low to High</text>
       <motion.circle cx={xPos} cy={yPos} r={8} fill="#1f2937" stroke="white" strokeWidth={2}
         initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} transition={{ type: "spring", stiffness: 260, damping: 20 }} />
+      <text x={size/2} y={size-4} textAnchor="middle" className="fill-slate-600 text-xs">{xLabel} → Low to High</text>
+      <text x={12} y={size/2} transform={`rotate(-90 12 ${size/2})`} textAnchor="middle" className="fill-slate-600 text-xs">{yLabel} → Low to High</text>
     </svg>
   );
 };
@@ -181,20 +169,30 @@ export default function App() {
   const quad = useQuadrant(pair.key, xVal, yVal);
 
   const summaryRef = useRef<HTMLDivElement>(null);
-  const handleExport = async () => {
+  const handleExport = async (type: "png" | "pdf") => {
     if (!summaryRef.current) return;
     const canvas = await html2canvas(summaryRef.current, { backgroundColor: "#ffffff", scale: 2 });
     const dataUrl = canvas.toDataURL("image/png");
-    const link = document.createElement("a");
-    link.href = dataUrl;
-    link.download = `Johari_Snapshot_${new Date().toISOString().slice(0,10)}.png`;
-    link.click();
+
+    if (type === "png") {
+      const link = document.createElement("a");
+      link.href = dataUrl;
+      link.download = `Johari_Snapshot_${new Date().toISOString().slice(0,10)}.png`;
+      link.click();
+    } else {
+      const pdf = new jsPDF("landscape", "pt", "a4");
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const imgProps = (pdf as any).getImageProperties(dataUrl);
+      const imgWidth = pageWidth - 40;
+      const imgHeight = (imgProps.height * imgWidth) / imgProps.width;
+      pdf.addImage(dataUrl, "PNG", 20, 20, imgWidth, imgHeight);
+      pdf.save(`Johari_Snapshot_${new Date().toISOString().slice(0,10)}.pdf`);
+    }
   };
 
   return (
     <div className="min-h-screen w-full bg-slate-50 p-6">
       <div className="mx-auto max-w-6xl grid gap-6">
-        {/* Top bar */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
           <h1 className="text-2xl font-semibold">Johari Window – Education Resource Evaluator</h1>
           <div className="flex items-center gap-4">
@@ -202,7 +200,10 @@ export default function App() {
               <Switch id="defs" checked={showFull} onCheckedChange={setShowFull} />
               <label htmlFor="defs" className="text-sm">Show OECD-aligned definitions</label>
             </div>
-            <Button onClick={handleExport}>Export Snapshot (All Pairs)</Button>
+            <div className="flex gap-2">
+              <Button onClick={() => handleExport("png")}>Export PNG</Button>
+              <Button onClick={() => handleExport("pdf")}>Export PDF</Button>
+            </div>
           </div>
         </div>
 
@@ -213,22 +214,20 @@ export default function App() {
 
           {PAIRS.map((p) => (
             <TabsContent key={p.key} value={p.key} className="grid md:grid-cols-2 gap-6">
-              <Card className="order-2 md:order-1">
-                <CardHeader><CardTitle className="text-base">{p.title}</CardTitle></CardHeader>
+              <Card>
+                <CardHeader><CardTitle>{p.title}</CardTitle></CardHeader>
                 <CardContent className="grid gap-4">
                   <Grid xLabel={p.x} yLabel={p.y} x={scores[p.x]} y={scores[p.y]} />
                   <div className="flex items-center gap-3">
-                    <Badge variant="outline" className="text-sm">Quadrant</Badge>
-                    <span className="font-medium">{useQuadrant(p.key as PairKey, scores[p.x], scores[p.y]).name}</span>
+                    <Badge variant="outline">Quadrant</Badge>
+                    <span className="font-medium">{quad.name}</span>
                   </div>
-                  <p className="text-sm text-slate-600">
-                    {useQuadrant(p.key as PairKey, scores[p.x], scores[p.y]).desc}
-                  </p>
+                  <p className="text-sm text-slate-600">{quad.desc}</p>
                 </CardContent>
               </Card>
 
-              <Card className="order-1 md:order-2">
-                <CardHeader><CardTitle className="text-base">Adjust Criteria</CardTitle></CardHeader>
+              <Card>
+                <CardHeader><CardTitle>Adjust Criteria</CardTitle></CardHeader>
                 <CardContent className="grid gap-6">
                   <SliderRow label={p.y} value={scores[p.y]} setValue={(n) => setScores((s) => ({ ...s, [p.y]: n }))} showFull={showFull} />
                   <SliderRow label={p.x} value={scores[p.x]} setValue={(n) => setScores((s) => ({ ...s, [p.x]: n }))} showFull={showFull} />
@@ -238,7 +237,6 @@ export default function App() {
           ))}
         </Tabs>
 
-        {/* Hidden summary area used for export */}
         <div ref={summaryRef} className="bg-white p-6 rounded-2xl border grid gap-6">
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-semibold">Overall Assessment Snapshot</h2>
@@ -251,7 +249,7 @@ export default function App() {
               const q = useQuadrant(p.key as PairKey, scores[p.x], scores[p.y]);
               return (
                 <Card key={`summary-${p.key}`}>
-                  <CardHeader><CardTitle className="text-sm">{p.title}</CardTitle></CardHeader>
+                  <CardHeader><CardTitle>{p.title}</CardTitle></CardHeader>
                   <CardContent className="grid gap-2">
                     <Grid xLabel={p.x} yLabel={p.y} x={scores[p.x]} y={scores[p.y]} compact />
                     <div className="text-xs text-slate-600">{q.name} — {q.desc}</div>
