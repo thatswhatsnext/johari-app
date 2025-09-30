@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import html2canvas from "html2canvas";
 import { motion } from "framer-motion";
-import jsPDF from "jspdf";
+import { jsPDF } from "jspdf";
 
 // --- Scale descriptors (school-adapted, OECD-derived) ---
 const SCALE: Record<string, Record<number, string>> = {
@@ -150,8 +150,8 @@ const Grid: React.FC<{ xLabel: string; yLabel: string; x: number; y: number; com
       <line x1={padding} y1={size-padding} x2={size-padding} y2={size-padding} stroke="#94a3b8" />
       <motion.circle cx={xPos} cy={yPos} r={8} fill="#1f2937" stroke="white" strokeWidth={2}
         initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} transition={{ type: "spring", stiffness: 260, damping: 20 }} />
-      <text x={size/2} y={size-4} textAnchor="middle" className="fill-slate-600 text-xs">{xLabel} → Low to High</text>
-      <text x={12} y={size/2} transform={`rotate(-90 12 ${size/2})`} textAnchor="middle" className="fill-slate-600 text-xs">{yLabel} → Low to High</text>
+      <text x={size/2} y={size-4} textAnchor="middle" fill="#475569" style={{ fontSize: 12 }}>{xLabel} → Low to High</text>
+      <text x={12} y={size/2} transform={`rotate(-90 12 ${size/2})`} textAnchor="middle" fill="#475569" style={{ fontSize: 12 }}>{yLabel} → Low to High</text>
     </svg>
   );
 };
@@ -171,22 +171,41 @@ export default function App() {
   const summaryRef = useRef<HTMLDivElement>(null);
   const handleExport = async (type: "png" | "pdf") => {
     if (!summaryRef.current) return;
-    const canvas = await html2canvas(summaryRef.current, { backgroundColor: "#ffffff", scale: 2 });
-    const dataUrl = canvas.toDataURL("image/png");
 
-    if (type === "png") {
-      const link = document.createElement("a");
-      link.href = dataUrl;
-      link.download = `Johari_Snapshot_${new Date().toISOString().slice(0,10)}.png`;
-      link.click();
-    } else {
+    const node = summaryRef.current;
+    node.classList.add('print-safe');
+    await new Promise(requestAnimationFrame); // ensure styles applied
+    try {
+      const canvas = await html2canvas(node, {
+        backgroundColor: "#ffffff",
+        scale: 2,
+      });
+      if (type === "png") {
+        const dataUrl = canvas.toDataURL("image/png");
+        const link = document.createElement("a");
+        link.href = dataUrl;
+        link.download = `Johari_Snapshot_${new Date().toISOString().slice(0, 10)}.png`;
+        link.click();
+        return;
+      }
+      const imgData = canvas.toDataURL("image/jpeg", 1.0);
       const pdf = new jsPDF("landscape", "pt", "a4");
       const pageWidth = pdf.internal.pageSize.getWidth();
-      const imgProps = (pdf as any).getImageProperties(dataUrl);
-      const imgWidth = pageWidth - 40;
-      const imgHeight = (imgProps.height * imgWidth) / imgProps.width;
-      pdf.addImage(dataUrl, "PNG", 20, 20, imgWidth, imgHeight);
-      pdf.save(`Johari_Snapshot_${new Date().toISOString().slice(0,10)}.pdf`);
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const imgWidth = pageWidth - 40; // margins
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      let remaining = imgHeight;
+      let y = 20;
+      pdf.addImage(imgData, "JPEG", 20, y, imgWidth, imgHeight);
+      while (remaining > pageHeight - 40) {
+        pdf.addPage();
+        y = 20 - (imgHeight - remaining);
+        pdf.addImage(imgData, "JPEG", 20, y, imgWidth, imgHeight);
+        remaining -= (pageHeight - 40);
+      }
+      pdf.save(`Johari_Snapshot_${new Date().toISOString().slice(0, 10)}.pdf`);
+    } finally {
+      node.classList.remove('print-safe');
     }
   };
 

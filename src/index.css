@@ -1,7 +1,26 @@
+/* --- Tailwind v4: imports MUST be first --- */
 @import "tailwindcss";
 
-/* Plugins */
+/* Plugins (optional) */
 @plugin "tailwindcss-animate";
 
-/* Custom variants */
+/* Custom variants (optional) */
 @custom-variant dark (&:is(.dark *));
+
+/* -------------------------------------------
+   Print/Export overrides for html2canvas
+   - Force hex/RGB colors (html2canvas can't parse OKLCH)
+   - Remove shadows for cleaner snapshots
+   ------------------------------------------- */
+.print-safe,
+.print-safe * {
+  color: #0f172a !important;            /* slate-900 */
+  background-color: #ffffff !important; /* white */
+  border-color: #e2e8f0 !important;     /* slate-200 */
+  box-shadow: none !important;
+}
+
+/* Ensure SVG labels render with a safe fill color */
+.print-safe svg text {
+  fill: #0f172a !important;
+}
